@@ -1,0 +1,43 @@
+name: Pull site from server
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install lftp
+        run: sudo apt-get update && sudo apt-get install -y lftp
+
+      - name: Download public_html
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+        run: |
+          lftp -u "$FTP_USERNAME","$FTP_PASSWORD" "$FTP_SERVER" <<'EOF'
+          set ftp:ssl-allow no
+          set net:timeout 30
+          set net:max-retries 5
+          set net:reconnect-interval-base 5
+          mirror --verbose --parallel=2 \
+            --exclude '^wp-content/(uploads|plugins|cache|upgrade)/' \
+            --exclude '^wp-config\.php$' \
+            --exclude '^\.htaccess$' \
+            /public_html ./
+          quit
+          EOF
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add -A
+          git commit -m "Import site from server [skip ci]" || echo "Nothing to commit"
+          git push
